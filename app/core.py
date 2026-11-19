@@ -92,6 +92,14 @@ class BPETokenizer:
         self.id_to_token: dict[int, str] = {idx: tok for idx, tok in enumerate(self.special_tokens)}
         self.merges: list[tuple[str, str]] = []
 
+        # Guarantee basic printable ASCII support so punctuation and brackets are never lost
+        for code in range(32, 127):
+            ch = chr(code)
+            if ch not in self.token_to_id:
+                idx = len(self.token_to_id)
+                self.token_to_id[ch] = idx
+                self.id_to_token[idx] = ch
+
     @property
     def pad_id(self) -> int:
         return self.token_to_id[self.PAD]
@@ -586,8 +594,117 @@ def milestone_4(
 
 # --- Milestone 5: Develop a text generation function to produce short commentary snippets.
 # Hint: Create a sampling function to generate new tokens based on the trained model's predictions.
-def milestone_5():  # TODO(milestone 5)
-    raise NotImplementedError("TODO(milestone 5)")
+def generate_commentary(
+    model: SportsGPT,
+    tokenizer: BPETokenizer,
+    prompt: str = "Curry with two seconds left",
+    max_new_tokens: int = 40,
+    temperature: float = 0.8,
+    top_k: int | None = 25,
+    top_p: float | None = 0.9,
+    repetition_penalty: float = 1.15,
+    tone: str | None = None,
+    device: str = "cpu",
+) -> str:
+    """Autoregressive text generation with temperature, top-k, and top-p (nucleus) sampling."""
+    model.eval()
+    model.to(device)
+
+    # Format tone prefix if specified
+    formatted_prompt = prompt.strip()
+    if tone:
+        tone_tag = f"[{tone.upper()}]"
+        if not formatted_prompt.startswith("["):
+            formatted_prompt = f"{tone_tag} {formatted_prompt}"
+
+    token_ids = tokenizer.encode(formatted_prompt, add_special_tokens=False)
+    if not token_ids:
+        token_ids = [tokenizer.bos_id]
+
+    generated = list(token_ids)
+    context_window = model.max_seq_len
+
+    with torch.no_grad():
+        for _ in range(max_new_tokens):
+            # Crop to context window
+            curr_input = generated[-context_window:]
+            x = torch.tensor([curr_input], dtype=torch.long, device=device)
+
+            logits, _ = model(x)
+            next_logits = logits[0, -1, :].clone()
+
+            # Repetition penalty
+            if repetition_penalty != 1.0:
+                for token_id in set(generated):
+                    if token_id in (tokenizer.pad_id, tokenizer.unk_id):
+                        continue
+                    if next_logits[token_id] > 0:
+                        next_logits[token_id] /= repetition_penalty
+                    else:
+                        next_logits[token_id] *= repetition_penalty
+
+            # Temperature scaling
+            temp = max(temperature, 1e-4)
+            next_logits = next_logits / temp
+
+            # Top-K filtering
+            if top_k is not None and top_k > 0:
+                k = min(top_k, next_logits.size(-1))
+                val, _ = torch.topk(next_logits, k)
+                min_val = val[-1]
+                next_logits[next_logits < min_val] = float("-inf")
+
+            # Top-P (nucleus) filtering
+            if top_p is not None and 0.0 < top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(next_logits, descending=True)
+                probs_cum = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                mask = probs_cum > top_p
+                # Shift mask right so at least one token is kept
+                mask[1:] = mask[:-1].clone()
+                mask[0] = False
+                remove_indices = sorted_indices[mask]
+                next_logits[remove_indices] = float("-inf")
+
+            probs = F.softmax(next_logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1).item()
+
+            if next_token == tokenizer.eos_id:
+                break
+
+            generated.append(next_token)
+
+    return tokenizer.decode(generated, skip_special_tokens=True)
+
+
+def milestone_5(
+    prompt: str = "Final seconds on the game clock",
+    tone: str = "excited",
+    max_new_tokens: int = 30,
+) -> dict[str, Any]:
+    torch.manual_seed(42)
+    m4_res = milestone_4(epochs=2, seq_len=20, batch_size=8)
+    model = m4_res["model"]
+    tokenizer = m4_res["tokenizer"]
+
+    commentary = generate_commentary(
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        tone=tone,
+        max_new_tokens=max_new_tokens,
+        temperature=0.7,
+        top_k=20,
+        top_p=0.9,
+    )
+
+    return {
+        "status": "completed",
+        "prompt": prompt,
+        "tone": tone,
+        "generated_commentary": commentary,
+        "model": model,
+        "tokenizer": tokenizer,
+    }
 
 
 # --- Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.

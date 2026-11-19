@@ -22,7 +22,7 @@ Tick these off as you go, and commit after each one.
       Hint: Implement causal self-attention as learned, then combine it into a transformer block.
 - [x] **4. Train the GPT model using the sports text data.**  
       Hint: Use the training loop from the drills to optimize your GPT model on the sports corpus.
-- [ ] **5. Develop a text generation function to produce short commentary snippets.**  
+- [x] **5. Develop a text generation function to produce short commentary snippets.**  
       Hint: Create a sampling function to generate new tokens based on the trained model's predictions.
 - [ ] **6. Create a CLI where users can input a prompt and receive generated commentary.**  
       Hint: Build a command-line interface to take user input and display generated text.

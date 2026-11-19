@@ -127,9 +127,48 @@ def test_milestone_4():
 
 
 # Milestone 5: Develop a text generation function to produce short commentary snippets.
-@pytest.mark.skip(reason="remove this line when you start milestone 5")
 def test_milestone_5():
-    raise NotImplementedError("write the test for milestone 5")
+    from app.core import (
+        BPETokenizer,
+        SportsGPT,
+        SportsDataset,
+        train_gpt,
+        generate_commentary,
+        milestone_5,
+    )
+
+    corpus = "[EXCITED] Curry hits a deep buzzer beater! Touchdown Kansas City! What a goal!" * 5
+    tokenizer = BPETokenizer().train(corpus, max_vocab_size=150)
+    dataset = SportsDataset(tokenizer.encode(corpus), seq_len=12, stride=3)
+    model = SportsGPT(vocab_size=tokenizer.vocab_size, d_model=32, n_heads=2, n_layers=2, max_seq_len=60)
+    train_gpt(model, dataset, epochs=2, batch_size=4)
+
+    prompt = "Curry"
+    gen_text = generate_commentary(
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        max_new_tokens=15,
+        temperature=0.8,
+        top_k=10,
+        top_p=0.9,
+    )
+    assert len(gen_text) >= len(prompt)
+    assert prompt in gen_text
+
+    # Test tone conditioning
+    toned_text = generate_commentary(
+        model=model,
+        tokenizer=tokenizer,
+        prompt="Touchdown",
+        tone="excited",
+        max_new_tokens=10,
+    )
+    assert "[EXCITED]" in toned_text
+
+    res = milestone_5(prompt="Curry", max_new_tokens=10)
+    assert res["status"] == "completed"
+    assert len(res["generated_commentary"]) > 0
 
 
 # Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
