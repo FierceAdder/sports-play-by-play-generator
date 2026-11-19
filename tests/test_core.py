@@ -27,9 +27,34 @@ def test_milestone_1():
 
 
 # Milestone 2: Implement the byte-pair tokenizer and create embeddings from the sports text.
-@pytest.mark.skip(reason="remove this line when you start milestone 2")
 def test_milestone_2():
-    raise NotImplementedError("write the test for milestone 2")
+    import torch
+    from app.core import BPETokenizer, TransformerEmbedding, milestone_2
+
+    tokenizer = BPETokenizer()
+    training_sample = "Curry hits a deep three! Touchdown Kansas City! Game over!"
+    tokenizer.train(training_sample, max_vocab_size=80)
+    assert tokenizer.vocab_size > 10
+
+    encoded = tokenizer.encode(training_sample, add_special_tokens=True)
+    decoded = tokenizer.decode(encoded)
+    assert decoded == training_sample
+
+    d_model = 32
+    emb_layer = TransformerEmbedding(vocab_size=tokenizer.vocab_size, d_model=d_model, max_seq_len=64)
+    inp = torch.tensor([encoded], dtype=torch.long)
+    out = emb_layer(inp)
+    assert out.shape == (1, len(encoded), d_model)
+    assert not torch.isnan(out).any()
+
+    # Verify serialization
+    tok_dict = tokenizer.to_dict()
+    reloaded = BPETokenizer.from_dict(tok_dict)
+    assert reloaded.decode(reloaded.encode("Curry hits")) == "Curry hits"
+
+    res = milestone_2(sample_text="Goal in stoppage time!")
+    assert res["status"] == "completed"
+    assert res["embeddings_shape"][2] == 64
 
 
 # Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
