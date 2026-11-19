@@ -1,4 +1,4 @@
-"""Your code. One stub per milestone; build them in order and keep each one small."""
+"""SportsGPT core neural architecture, byte-pair tokenizer, and autoregressive generation pipeline."""
 import re
 from pathlib import Path
 from typing import Any
@@ -59,7 +59,6 @@ class CorpusLoader:
 
 
 # --- Milestone 1: Gather a small corpus of sports commentary or news articles.
-# Hint: Focus on collecting diverse sports text data.
 def milestone_1(corpus_path: str | Path | None = None) -> dict[str, Any]:
     loader = CorpusLoader(corpus_path)
     stats = loader.get_stats()
@@ -72,7 +71,6 @@ def milestone_1(corpus_path: str | Path | None = None) -> dict[str, Any]:
 
 
 # --- Milestone 2: Implement the byte-pair tokenizer and create embeddings from the sports text.
-# Hint: Apply the byte-pair tokenizer from the drills to process your collected text.
 import json
 import torch
 import torch.nn as nn
@@ -283,7 +281,6 @@ def milestone_2(
 
 
 # --- Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
-# Hint: Implement causal self-attention as learned, then combine it into a transformer block.
 import math
 import torch.nn.functional as F
 
@@ -417,7 +414,6 @@ def milestone_3(
 
 
 # --- Milestone 4: Train the GPT model using the sports text data.
-# Hint: Use the training loop from the drills to optimize your GPT model on the sports corpus.
 from torch.utils.data import Dataset, DataLoader
 
 
@@ -528,9 +524,11 @@ def train_gpt(
     epochs: int = 5,
     lr: float = 1e-3,
     batch_size: int = 8,
+    seed: int = 42,
     device: str = "cpu",
 ) -> list[float]:
-    """Training loop optimizing the GPT model on sports data."""
+    """Training loop optimizing the GPT model on sports data with deterministic random seed."""
+    torch.manual_seed(seed)
     model.to(device)
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
@@ -593,7 +591,6 @@ def milestone_4(
 
 
 # --- Milestone 5: Develop a text generation function to produce short commentary snippets.
-# Hint: Create a sampling function to generate new tokens based on the trained model's predictions.
 def generate_commentary(
     model: SportsGPT,
     tokenizer: BPETokenizer,
@@ -708,7 +705,6 @@ def milestone_5(
 
 
 # --- Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
-# Hint: Build a command-line interface to take user input and display generated text.
 def save_checkpoint(path: str | Path, model: SportsGPT, tokenizer: BPETokenizer) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

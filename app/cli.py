@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # 1. Hello command (starter)
+    # System healthcheck and status command
     sub.add_parser("hello", help="check that everything is wired up")
 
     # 2. Generate command

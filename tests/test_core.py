@@ -1,7 +1,4 @@
-"""Your tests. Each milestone in README.md gets one here: write the test first, then make it pass.
-
-They start skipped. Remove the `skip` line as you work on each milestone.
-"""
+"""Comprehensive test suite verifying SportsGPT architecture, tokenizer, training, and generation."""
 import pytest
 
 # Milestone 1: Gather a small corpus of sports commentary or news articles.
@@ -204,4 +201,40 @@ def test_milestone_6(capsys, tmp_path):
     opts_out = capsys.readouterr().out
     assert "Option 1" in opts_out
     assert "Option 2" in opts_out
+
+
+def test_checkpoint_save_and_load(tmp_path):
+    from app.core import SportsGPT, BPETokenizer, save_checkpoint, load_checkpoint
+
+    tok = BPETokenizer()
+    tok.train("Curry scores buzzer beater", max_vocab_size=25)
+    model = SportsGPT(vocab_size=tok.vocab_size, d_model=16, n_heads=2, n_layers=1, max_seq_len=20)
+
+    path = tmp_path / "model.pt"
+    save_checkpoint(path, model, tok)
+    assert path.exists()
+
+    loaded_model, loaded_tok = load_checkpoint(path)
+    assert loaded_model.vocab_size == model.vocab_size
+    assert loaded_tok.vocab_size == tok.vocab_size
+
+
+def test_baseline_evaluation():
+    from app.core import SportsGPT, BPETokenizer, SportsDataset, train_gpt, evaluate_baseline_vs_gpt
+
+    tok = BPETokenizer()
+    text = "Curry hits a three! Goal in stoppage! Touchdown! Match point!" * 6
+    tok.train(text, max_vocab_size=40)
+    dataset = SportsDataset(tok.encode(text), seq_len=16, stride=4)
+    model = SportsGPT(vocab_size=tok.vocab_size, d_model=32, n_heads=2, n_layers=2, max_seq_len=30)
+    train_gpt(model, dataset, epochs=3, lr=0.01, batch_size=4)
+
+    metrics = evaluate_baseline_vs_gpt(model, tok, eval_text=text)
+
+    assert "uniform_loss" in metrics
+    assert "unigram_loss" in metrics
+    assert "gpt_loss" in metrics
+    assert metrics["uniform_perplexity"] > 0
+    assert metrics["gpt_perplexity"] > 0
+    assert metrics["gpt_loss"] < metrics["uniform_loss"]
 
