@@ -410,8 +410,178 @@ def milestone_3(
 
 # --- Milestone 4: Train the GPT model using the sports text data.
 # Hint: Use the training loop from the drills to optimize your GPT model on the sports corpus.
-def milestone_4():  # TODO(milestone 4)
-    raise NotImplementedError("TODO(milestone 4)")
+from torch.utils.data import Dataset, DataLoader
+
+
+class SportsGPT(nn.Module):
+    """Generative Pre-trained Transformer for sports play-by-play commentary."""
+
+    def __init__(
+        self,
+        vocab_size: int,
+        d_model: int = 64,
+        n_heads: int = 4,
+        n_layers: int = 3,
+        max_seq_len: int = 128,
+        d_ff: int | None = None,
+        dropout: float = 0.1,
+        pad_id: int = 0,
+    ):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.max_seq_len = max_seq_len
+        self.pad_id = pad_id
+
+        self.embedding = TransformerEmbedding(
+            vocab_size=vocab_size,
+            d_model=d_model,
+            max_seq_len=max_seq_len,
+            dropout=dropout,
+        )
+        self.blocks = nn.ModuleList([
+            TransformerBlock(
+                d_model=d_model,
+                n_heads=n_heads,
+                max_seq_len=max_seq_len,
+                d_ff=d_ff,
+                dropout=dropout,
+            )
+            for _ in range(n_layers)
+        ])
+        self.ln_f = nn.LayerNorm(d_model)
+        self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
+
+        # Weight tying between embedding and output projection
+        self.lm_head.weight = self.embedding.token_embedding.weight
+
+        # Parameter initialization
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        elif isinstance(module, nn.LayerNorm):
+            nn.init.ones_(module.weight)
+            nn.init.zeros_(module.bias)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        targets: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        x = self.embedding(input_ids)
+        for block in self.blocks:
+            x = block(x)
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
+
+        loss = None
+        if targets is not None:
+            loss = F.cross_entropy(
+                logits.view(-1, self.vocab_size),
+                targets.view(-1),
+                ignore_index=-100,
+            )
+
+        return logits, loss
+
+
+class SportsDataset(Dataset):
+    """Prepares autoregressive (x, y) token chunk pairs for GPT training."""
+
+    def __init__(self, token_ids: list[int], seq_len: int = 32, stride: int | None = None):
+        self.seq_len = seq_len
+        self.stride = stride or (seq_len // 2 or 1)
+        self.samples: list[tuple[list[int], list[int]]] = []
+
+        # Slice sequence into overlapping windows of size seq_len + 1
+        for i in range(0, len(token_ids) - seq_len, self.stride):
+            chunk = token_ids[i : i + seq_len + 1]
+            if len(chunk) == seq_len + 1:
+                x = chunk[:-1]
+                y = chunk[1:]
+                self.samples.append((x, y))
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        x, y = self.samples[idx]
+        return torch.tensor(x, dtype=torch.long), torch.tensor(y, dtype=torch.long)
+
+
+def train_gpt(
+    model: SportsGPT,
+    dataset: SportsDataset,
+    epochs: int = 5,
+    lr: float = 1e-3,
+    batch_size: int = 8,
+    device: str = "cpu",
+) -> list[float]:
+    """Training loop optimizing the GPT model on sports data."""
+    model.to(device)
+    model.train()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    loss_history = []
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        batches = 0
+        for x, y in dataloader:
+            x, y = x.to(device), y.to(device)
+            optimizer.zero_grad()
+            _, loss = model(x, targets=y)
+            assert loss is not None
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            epoch_loss += loss.item()
+            batches += 1
+
+        avg_loss = epoch_loss / max(1, batches)
+        loss_history.append(avg_loss)
+
+    model.eval()
+    return loss_history
+
+
+def milestone_4(
+    epochs: int = 3,
+    lr: float = 2e-3,
+    seq_len: int = 24,
+    batch_size: int = 8,
+) -> dict[str, Any]:
+    torch.manual_seed(42)
+    corpus = CorpusLoader().load_text()
+    tokenizer = BPETokenizer().train(corpus, max_vocab_size=120)
+    token_ids = tokenizer.encode(corpus, add_special_tokens=False)
+
+    dataset = SportsDataset(token_ids, seq_len=seq_len)
+    model = SportsGPT(
+        vocab_size=tokenizer.vocab_size,
+        d_model=48,
+        n_heads=4,
+        n_layers=2,
+        max_seq_len=64,
+        dropout=0.1,
+    )
+
+    losses = train_gpt(model, dataset, epochs=epochs, lr=lr, batch_size=batch_size)
+
+    return {
+        "status": "completed",
+        "epochs": epochs,
+        "initial_loss": losses[0],
+        "final_loss": losses[-1],
+        "loss_history": losses,
+        "model": model,
+        "tokenizer": tokenizer,
+    }
 
 
 # --- Milestone 5: Develop a text generation function to produce short commentary snippets.

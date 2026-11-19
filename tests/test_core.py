@@ -90,9 +90,40 @@ def test_milestone_3():
 
 
 # Milestone 4: Train the GPT model using the sports text data.
-@pytest.mark.skip(reason="remove this line when you start milestone 4")
 def test_milestone_4():
-    raise NotImplementedError("write the test for milestone 4")
+    from app.core import SportsGPT, SportsDataset, train_gpt, BPETokenizer, milestone_4
+
+    sample_corpus = (
+        "Curry hits the three! Touchdown Kansas City! What a goal in stoppage time! "
+        "A walk-off home run into the upper deck! Match point for Alcaraz on Centre Court! "
+    ) * 4
+    tokenizer = BPETokenizer().train(sample_corpus, max_vocab_size=60)
+    tokens = tokenizer.encode(sample_corpus)
+
+    dataset = SportsDataset(tokens, seq_len=16, stride=4)
+    assert len(dataset) > 0
+
+    model = SportsGPT(
+        vocab_size=tokenizer.vocab_size,
+        d_model=32,
+        n_heads=2,
+        n_layers=2,
+        max_seq_len=32,
+    )
+
+    # Initial forward check
+    x, y = dataset[0]
+    logits, loss = model(x.unsqueeze(0), y.unsqueeze(0))
+    assert logits.shape == (1, 16, tokenizer.vocab_size)
+    assert loss is not None and loss.item() > 0
+
+    losses = train_gpt(model, dataset, epochs=3, lr=0.005, batch_size=4)
+    assert len(losses) == 3
+    assert losses[-1] < losses[0], "Training loss should decrease"
+
+    res = milestone_4(epochs=2)
+    assert res["status"] == "completed"
+    assert res["final_loss"] <= res["initial_loss"]
 
 
 # Milestone 5: Develop a text generation function to produce short commentary snippets.
