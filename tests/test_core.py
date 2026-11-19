@@ -58,9 +58,35 @@ def test_milestone_2():
 
 
 # Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
-@pytest.mark.skip(reason="remove this line when you start milestone 3")
 def test_milestone_3():
-    raise NotImplementedError("write the test for milestone 3")
+    import torch
+    from app.core import CausalSelfAttention, TransformerBlock, milestone_3
+
+    d_model = 32
+    n_heads = 4
+    seq_len = 12
+    attn = CausalSelfAttention(d_model=d_model, n_heads=n_heads, max_seq_len=32, dropout=0.0)
+    attn.eval()
+
+    x = torch.randn(2, seq_len, d_model)
+    out = attn(x)
+    assert out.shape == (2, seq_len, d_model)
+
+    # Check causality strictly: changing future token doesn't affect past output
+    x_perturbed = x.clone()
+    x_perturbed[:, 7:, :] += 10.0
+    out_perturbed = attn(x_perturbed)
+    diff = torch.max(torch.abs(out[:, :7, :] - out_perturbed[:, :7, :])).item()
+    assert diff < 1e-5, f"Causal violation: past tokens changed by future input (diff={diff})"
+
+    block = TransformerBlock(d_model=d_model, n_heads=n_heads, max_seq_len=32, dropout=0.0)
+    block_out = block(x)
+    assert block_out.shape == (2, seq_len, d_model)
+
+    res = milestone_3()
+    assert res["status"] == "completed"
+    assert res["is_causal"] is True
+    assert res["past_difference"] < 1e-5
 
 
 # Milestone 4: Train the GPT model using the sports text data.

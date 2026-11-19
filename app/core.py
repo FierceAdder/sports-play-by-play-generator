@@ -276,8 +276,136 @@ def milestone_2(
 
 # --- Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
 # Hint: Implement causal self-attention as learned, then combine it into a transformer block.
-def milestone_3():  # TODO(milestone 3)
-    raise NotImplementedError("TODO(milestone 3)")
+import math
+import torch.nn.functional as F
+
+
+class CausalSelfAttention(nn.Module):
+    """Multi-head causal self-attention mechanism."""
+
+    def __init__(self, d_model: int = 64, n_heads: int = 4, max_seq_len: int = 256, dropout: float = 0.1):
+        super().__init__()
+        if d_model % n_heads != 0:
+            raise ValueError(f"d_model ({d_model}) must be divisible by n_heads ({n_heads})")
+
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.head_dim = d_model // n_heads
+        self.max_seq_len = max_seq_len
+
+        # Joint projection for Query, Key, and Value
+        self.qkv_proj = nn.Linear(d_model, 3 * d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
+        self.attn_dropout = nn.Dropout(dropout)
+        self.resid_dropout = nn.Dropout(dropout)
+
+        # Lower-triangular causal mask buffer
+        mask = torch.tril(torch.ones(max_seq_len, max_seq_len)).view(1, 1, max_seq_len, max_seq_len)
+        self.register_buffer("causal_mask", mask)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len, d_model = x.shape
+        if seq_len > self.max_seq_len:
+            raise ValueError(f"Input sequence length {seq_len} exceeds max_seq_len {self.max_seq_len}")
+
+        qkv = self.qkv_proj(x)
+        q, k, v = qkv.chunk(3, dim=-1)
+
+        # Reshape to (batch_size, n_heads, seq_len, head_dim)
+        q = q.view(batch_size, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
+
+        # Scaled dot-product attention
+        scale = 1.0 / math.sqrt(self.head_dim)
+        scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+
+        # Apply causal mask: mask upper triangle to -infinity
+        scores = scores.masked_fill(self.causal_mask[:, :, :seq_len, :seq_len] == 0, float("-inf"))
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.attn_dropout(attn_weights)
+
+        # Context aggregation
+        out = torch.matmul(attn_weights, v)
+        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
+        return self.resid_dropout(self.out_proj(out))
+
+
+class FeedForward(nn.Module):
+    """Position-wise Feed-Forward Network."""
+
+    def __init__(self, d_model: int = 64, d_ff: int | None = None, dropout: float = 0.1):
+        super().__init__()
+        d_ff = d_ff or (4 * d_model)
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Linear(d_ff, d_model),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
+class TransformerBlock(nn.Module):
+    """Pre-LayerNorm Transformer block combining causal self-attention and MLP."""
+
+    def __init__(
+        self,
+        d_model: int = 64,
+        n_heads: int = 4,
+        max_seq_len: int = 256,
+        d_ff: int | None = None,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(d_model)
+        self.attn = CausalSelfAttention(d_model, n_heads, max_seq_len, dropout)
+        self.ln2 = nn.LayerNorm(d_model)
+        self.mlp = FeedForward(d_model, d_ff, dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.attn(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
+
+
+def milestone_3(
+    batch_size: int = 2,
+    seq_len: int = 16,
+    d_model: int = 64,
+    n_heads: int = 4,
+    max_seq_len: int = 64,
+) -> dict[str, Any]:
+    torch.manual_seed(42)
+    block = TransformerBlock(
+        d_model=d_model,
+        n_heads=n_heads,
+        max_seq_len=max_seq_len,
+        dropout=0.0,
+    )
+    block.eval()
+
+    # Create dummy input
+    x1 = torch.randn(batch_size, seq_len, d_model)
+    out1 = block(x1)
+
+    # Causality verification: perturbing future position t=10 must not alter output at t < 10
+    x2 = x1.clone()
+    x2[:, 10:, :] = torch.randn_like(x2[:, 10:, :])
+    out2 = block(x2)
+
+    past_diff = torch.max(torch.abs(out1[:, :10, :] - out2[:, :10, :])).item()
+    is_causal = past_diff < 1e-5
+
+    return {
+        "status": "completed",
+        "output_shape": list(out1.shape),
+        "is_causal": is_causal,
+        "past_difference": past_diff,
+        "transformer_block": block,
+    }
 
 
 # --- Milestone 4: Train the GPT model using the sports text data.

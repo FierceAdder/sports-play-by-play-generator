@@ -18,7 +18,7 @@ Tick these off as you go, and commit after each one.
       Hint: Focus on collecting diverse sports text data.
 - [x] **2. Implement the byte-pair tokenizer and create embeddings from the sports text.**  
       Hint: Apply the byte-pair tokenizer from the drills to process your collected text.
-- [ ] **3. Build the causal self-attention mechanism and assemble the transformer block.**  
+- [x] **3. Build the causal self-attention mechanism and assemble the transformer block.**  
       Hint: Implement causal self-attention as learned, then combine it into a transformer block.
 - [ ] **4. Train the GPT model using the sports text data.**  
       Hint: Use the training loop from the drills to optimize your GPT model on the sports corpus.
