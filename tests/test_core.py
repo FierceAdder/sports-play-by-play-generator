@@ -5,9 +5,25 @@ They start skipped. Remove the `skip` line as you work on each milestone.
 import pytest
 
 # Milestone 1: Gather a small corpus of sports commentary or news articles.
-@pytest.mark.skip(reason="remove this line when you start milestone 1")
 def test_milestone_1():
-    raise NotImplementedError("write the test for milestone 1")
+    from app.core import CorpusLoader, milestone_1
+
+    loader = CorpusLoader()
+    text = loader.load_text()
+    assert len(text) > 5000, "Corpus should contain substantial sports text"
+
+    stats = loader.get_stats()
+    assert stats["total_words"] > 500
+    assert len(stats["detected_sports"]) >= 4, "Corpus should cover multiple diverse sports"
+    assert "EXCITED" in stats["detected_tones"]
+    assert "NEUTRAL" in stats["detected_tones"]
+
+    train_txt, val_txt = loader.get_train_val_split(0.1)
+    assert len(train_txt) > 0 and len(val_txt) > 0
+
+    res = milestone_1()
+    assert res["status"] == "completed"
+    assert "total_words" in res["stats"]
 
 
 # Milestone 2: Implement the byte-pair tokenizer and create embeddings from the sports text.

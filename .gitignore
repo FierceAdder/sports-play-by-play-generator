@@ -6,7 +6,10 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+.DS_Store
+*.DS_Store
 
 # Local data
-data/
+data/*
+!data/sports_corpus.txt
 *.db
