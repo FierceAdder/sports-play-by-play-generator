@@ -24,7 +24,7 @@ Tick these off as you go, and commit after each one.
       Hint: Use the training loop from the drills to optimize your GPT model on the sports corpus.
 - [x] **5. Develop a text generation function to produce short commentary snippets.**  
       Hint: Create a sampling function to generate new tokens based on the trained model's predictions.
-- [ ] **6. Create a CLI where users can input a prompt and receive generated commentary.**  
+- [x] **6. Create a CLI where users can input a prompt and receive generated commentary.**  
       Hint: Build a command-line interface to take user input and display generated text.
 
 ## Run it

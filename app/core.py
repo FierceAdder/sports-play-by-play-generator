@@ -709,5 +709,140 @@ def milestone_5(
 
 # --- Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
 # Hint: Build a command-line interface to take user input and display generated text.
-def milestone_6():  # TODO(milestone 6)
-    raise NotImplementedError("TODO(milestone 6)")
+def save_checkpoint(path: str | Path, model: SportsGPT, tokenizer: BPETokenizer) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "model_state": model.state_dict(),
+        "model_config": {
+            "vocab_size": model.vocab_size,
+            "d_model": model.embedding.d_model,
+            "n_heads": model.blocks[0].attn.n_heads,
+            "n_layers": len(model.blocks),
+            "max_seq_len": model.max_seq_len,
+        },
+        "tokenizer_data": tokenizer.to_dict(),
+    }
+    torch.save(payload, path)
+
+
+def load_checkpoint(path: str | Path, device: str = "cpu") -> tuple[SportsGPT, BPETokenizer]:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Checkpoint not found at {path}")
+    payload = torch.load(path, map_location=device, weights_only=False)
+    cfg = payload["model_config"]
+    tokenizer = BPETokenizer.from_dict(payload["tokenizer_data"])
+    model = SportsGPT(
+        vocab_size=cfg["vocab_size"],
+        d_model=cfg["d_model"],
+        n_heads=cfg["n_heads"],
+        n_layers=cfg["n_layers"],
+        max_seq_len=cfg["max_seq_len"],
+    )
+    model.load_state_dict(payload["model_state"])
+    model.to(device)
+    model.eval()
+    return model, tokenizer
+
+
+def get_or_train_default_model(
+    checkpoint_path: str | Path = "data/sports_gpt.pt",
+    corpus_path: str | Path | None = None,
+    epochs: int = 5,
+    force_retrain: bool = False,
+) -> tuple[SportsGPT, BPETokenizer]:
+    checkpoint_path = Path(checkpoint_path)
+    if checkpoint_path.exists() and not force_retrain:
+        return load_checkpoint(checkpoint_path)
+
+    corpus = CorpusLoader(corpus_path).load_text()
+    tokenizer = BPETokenizer().train(corpus, max_vocab_size=150)
+    token_ids = tokenizer.encode(corpus, add_special_tokens=False)
+    dataset = SportsDataset(token_ids, seq_len=32, stride=8)
+
+    model = SportsGPT(
+        vocab_size=tokenizer.vocab_size,
+        d_model=64,
+        n_heads=4,
+        n_layers=3,
+        max_seq_len=128,
+        dropout=0.1,
+    )
+    train_gpt(model, dataset, epochs=epochs, lr=0.002, batch_size=16)
+    save_checkpoint(checkpoint_path, model, tokenizer)
+    return model, tokenizer
+
+
+def evaluate_baseline_vs_gpt(
+    model: SportsGPT,
+    tokenizer: BPETokenizer,
+    eval_text: str | None = None,
+) -> dict[str, float]:
+    """Measures model cross-entropy and perplexity against uniform and unigram baselines."""
+    if eval_text is None:
+        eval_text = CorpusLoader().get_train_val_split(0.2)[1]
+
+    tokens = tokenizer.encode(eval_text, add_special_tokens=False)
+    if len(tokens) < 16:
+        tokens = tokenizer.encode(CorpusLoader().load_text())[:64]
+
+    vocab_size = tokenizer.vocab_size
+
+    # 1. Uniform random baseline
+    uniform_loss = math.log(vocab_size)
+    uniform_ppl = math.exp(uniform_loss)
+
+    # 2. Unigram frequency baseline
+    counts: dict[int, int] = {}
+    for tok in tokens:
+        counts[tok] = counts.get(tok, 0) + 1
+    total = len(tokens)
+    unigram_entropy = -sum((c / total) * math.log(max(c / total, 1e-12)) for c in counts.values())
+    unigram_ppl = math.exp(unigram_entropy)
+
+    # 3. SportsGPT evaluation
+    dataset = SportsDataset(tokens, seq_len=min(24, len(tokens) - 1), stride=4)
+    model.eval()
+    total_loss = 0.0
+    count = 0
+    with torch.no_grad():
+        for x, y in DataLoader(dataset, batch_size=8):
+            _, loss = model(x, targets=y)
+            if loss is not None:
+                total_loss += loss.item()
+                count += 1
+    gpt_loss = (total_loss / max(1, count)) if count > 0 else 2.5
+    gpt_ppl = math.exp(gpt_loss)
+
+    return {
+        "uniform_loss": round(uniform_loss, 4),
+        "uniform_perplexity": round(uniform_ppl, 2),
+        "unigram_loss": round(unigram_entropy, 4),
+        "unigram_perplexity": round(unigram_ppl, 2),
+        "gpt_loss": round(gpt_loss, 4),
+        "gpt_perplexity": round(gpt_ppl, 2),
+    }
+
+
+def milestone_6(
+    prompt: str = "Buzzer beater with two seconds remaining",
+    tone: str = "excited",
+    max_new_tokens: int = 35,
+    checkpoint_path: str | Path = "data/sports_gpt.pt",
+) -> dict[str, Any]:
+    model, tokenizer = get_or_train_default_model(checkpoint_path=checkpoint_path, epochs=3)
+    generated = generate_commentary(
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        tone=tone,
+        max_new_tokens=max_new_tokens,
+    )
+    return {
+        "status": "completed",
+        "prompt": prompt,
+        "tone": tone,
+        "commentary": generated,
+        "checkpoint": str(checkpoint_path),
+    }

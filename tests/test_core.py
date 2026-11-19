@@ -172,7 +172,36 @@ def test_milestone_5():
 
 
 # Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
-@pytest.mark.skip(reason="remove this line when you start milestone 6")
-def test_milestone_6():
-    raise NotImplementedError("write the test for milestone 6")
+def test_milestone_6(capsys, tmp_path):
+    from app.core import milestone_6
+    from app.cli import main
+
+    ckpt = tmp_path / "test_gpt.pt"
+    res = milestone_6(
+        prompt="Final seconds on the game clock",
+        tone="excited",
+        max_new_tokens=15,
+        checkpoint_path=ckpt,
+    )
+    assert res["status"] == "completed"
+    assert len(res["commentary"]) > 0
+    assert ckpt.exists()
+
+    # Test CLI generate
+    main(["generate", "--prompt", "Curry at the buzzer", "--max-tokens", "10", "--checkpoint", str(ckpt)])
+    out = capsys.readouterr().out
+    assert "Sports Play-by-Play Commentary" in out
+    assert "Curry at the buzzer" in out
+
+    # Test CLI evaluate
+    main(["evaluate", "--checkpoint", str(ckpt)])
+    eval_out = capsys.readouterr().out
+    assert "Model vs Baseline Comparison" in eval_out
+    assert "SportsGPT" in eval_out
+
+    # Test CLI sample-options
+    main(["sample-options", "--prompt", "Match point", "-n", "2", "--checkpoint", str(ckpt)])
+    opts_out = capsys.readouterr().out
+    assert "Option 1" in opts_out
+    assert "Option 2" in opts_out
 
